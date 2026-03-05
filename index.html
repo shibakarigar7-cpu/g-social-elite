@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>G-Social Elite</title>
+    <style>
+        /* --- CSS: Design Section --- */
+        * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { margin: 0; background: #0b141a; color: #e9edef; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        .screen { display: none; flex-direction: column; height: 100%; }
+        .active { display: flex; }
+
+        header { background: #202c33; padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #374045; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        
+        /* Group List Cards */
+        #groups-container { flex: 1; overflow-y: auto; padding: 10px; }
+        .card { background: #202c33; padding: 15px; border-radius: 10px; margin-bottom: 10px; cursor: pointer; border-left: 5px solid #00a884; transition: 0.2s; }
+        .card:active { background: #2a3942; transform: scale(0.98); }
+        
+        /* Chat Messages */
+        #msg-box { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 8px; background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); background-blend-mode: overlay; background-color: #0b141a; }
+        .msg { padding: 8px 12px; border-radius: 8px; max-width: 80%; font-size: 14px; line-height: 1.4; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+        .me { align-self: flex-end; background: #005c4b; border-top-right-radius: 0; }
+        .other { align-self: flex-start; background: #202c33; border-top-left-radius: 0; }
+        .u-name { font-size: 10px; color: #34d399; font-weight: bold; margin-bottom: 2px; display: block; }
+
+        /* Buttons & Inputs */
+        footer { background: #202c33; padding: 10px; display: flex; gap: 8px; align-items: center; }
+        input { flex: 1; background: #2a3942; border: none; color: white; padding: 12px 18px; border-radius: 25px; outline: none; font-size: 15px; }
+        .btn { background: #00a884; border: none; color: white; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-round { border-radius: 50%; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+
+        /* Modal Popup */
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 5000; padding: 25px; }
+        .modal input { width: 100%; margin-bottom: 12px; border: 1px solid #374045; }
+    </style>
+</head>
+<body>
+
+    <div id="login-scr" class="screen active" style="justify-content:center; align-items:center; text-align:center;">
+        <h1 style="color:#00a884; font-size: 3rem; margin: 0;">G-S</h1>
+        <p style="opacity: 0.6;">Secure Private Groups</p><br>
+        <button class="btn" onclick="login()" style="border-radius:30px; padding:15px 50px; font-size: 16px;">Login with Google</button>
+    </div>
+
+    <div id="list-scr" class="screen">
+        <header>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div id="p-img" style="width:35px; height:35px; background:#00a884; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold;">?</div>
+                <span id="my-profile">User</span>
+            </div>
+            <button onclick="logout()" style="background:none; border:1px solid #ff4b4b; color:#ff4b4b; border-radius:5px; padding:5px 10px; font-size:12px;">LOGOUT</button>
+        </header>
+        <div id="groups-container"></div>
+        <div style="padding:15px; display:flex; gap:10px; background:#202c33;">
+            <button class="btn" onclick="openModal('create')" style="flex:1;">+ Create</button>
+            <button class="btn" onclick="openModal('join')" style="flex:1; background:#34b7f1;"># Join</button>
+        </div>
+    </div>
+
+    <div id="chat-scr" class="screen">
+        <header>
+            <button onclick="goBack()" style="background:none; border:none; color:#00a884; font-size:24px; cursor:pointer;">⬅</button>
+            <div style="text-align:center;">
+                <b id="group-title">Group Name</b><br>
+                <small id="group-id-display" style="opacity:0.5; font-size:10px;"></small>
+            </div>
+            <button onclick="leaveGroup()" style="background:none; border:none; color:#ff4b4b; font-size:11px; font-weight:bold;">EXIT</button>
+        </header>
+        <div id="msg-box"></div>
+        <footer>
+            <input type="text" id="msg-inp" placeholder="Type a message..." autocomplete="off">
+            <button class="btn btn-round" id="send-btn">➤</button>
+        </footer>
+    </div>
+
+    <div id="modal" class="modal">
+        <h2 id="modal-h" style="color:#00a884;">Action</h2>
+        <input type="text" id="g-name" placeholder="Group Name (e.g. Friends)">
+        <input type="text" id="g-id" placeholder="Unique ID (No spaces, e.g. friends_123)">
+        <input type="password" id="g-pass" placeholder="Secret Password">
+        <button class="btn" id="modal-btn" style="width:100%; padding:15px;">Confirm Action</button>
+        <button onclick="closeModal()" style="color:#8696a0; background:none; border:none; margin-top:20px; cursor:pointer;">Cancel</button>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getDatabase, ref, push, set, onChildAdded, get, off } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        // 🔥 Aapka Firebase Config
+        const firebaseConfig = { 
+            apiKey: "AIzaSyB5fR75bSzUC431tGZb6NCm2frB7d-u290", 
+            authDomain: "g-social-7319d.firebaseapp.com",
+            databaseURL: "https://g-social-7319d-default-rtdb.firebaseio.com",
+            projectId: "g-social-7319d"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+        const provider = new GoogleAuthProvider();
+
+        let me = null, activeGid = null;
+
+        // --- AUTH LOGIC ---
+        window.login = () => signInWithPopup(auth, provider).catch(err => alert("Login Error: " + err.message));
+        window.logout = () => { if(confirm("Logout karein?")) signOut(auth); };
+        
+        onAuthStateChanged(auth, (user) => {
+            if(user) { 
+                me = user; 
+                switchScr('list-scr'); 
+                loadMyList(); 
+                document.getElementById('my-profile').innerText = user.displayName;
+                document.getElementById('p-img').innerText = user.displayName.charAt(0);
+                // Permission for notifications
+                if(Notification.permission !== 'granted') Notification.requestPermission();
+            } else { 
+                switchScr('login-scr'); 
+            }
+        });
+
+        const switchScr = (id) => { 
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); 
+            document.getElementById(id).classList.add('active'); 
+        };
+        window.goBack = () => { activeGid = null; switchScr('list-scr'); loadMyList(); };
+
+        // --- GROUP MANAGEMENT ---
+        window.openModal = (mode) => {
+            document.getElementById('modal').style.display = 'flex';
+            document.getElementById('modal-h').innerText = mode === 'create' ? 'Create Private Group' : 'Join Private Group';
+            document.getElementById('g-name').style.display = mode === 'create' ? 'block' : 'none';
+            document.getElementById('modal-btn').onclick = () => mode === 'create' ? doCreate() : doJoin();
+        };
+        window.closeModal = () => {
+            document.getElementById('modal').style.display = 'none';
+            document.getElementById('g-name').value = ''; document.getElementById('g-id').value = ''; document.getElementById('g-pass').value = '';
+        };
+
+        const doCreate = async () => {
+            const name = document.getElementById('g-name').value, 
+                  id = document.getElementById('g-id').value.trim().replace(/\s+/g, '_'), 
+                  pass = document.getElementById('g-pass').value;
+            if(!name || !id || !pass) return alert("Sari details bhariye!");
+            
+            const check = await get(ref(db, `groups/${id}`));
+            if(check.exists()) return alert("Ye ID pehle se kisi ne le rakhi hai!");
+            
+            await set(ref(db, `groups/${id}`), { name, pass, creator: me.uid });
+            await set(ref(db, `users/${me.uid}/joined/${id}`), name);
+            closeModal(); loadMyList();
+        };
+
+        const doJoin = async () => {
+            const id = document.getElementById('g-id').value.trim(), 
+                  pass = document.getElementById('g-pass').value;
+            const check = await get(ref(db, `groups/${id}`));
+            if(!check.exists()) return alert("Group nahi mila!");
+            if(check.val().pass !== pass) return alert("Galat Password!");
+            
+            await set(ref(db, `users/${me.uid}/joined/${id}`), check.val().name);
+            closeModal(); loadMyList();
+        };
+
+        async function loadMyList() {
+            const container = document.getElementById('groups-container');
+            container.innerHTML = "<p style='text-align:center; opacity:0.5;'>Loading groups...</p>";
+            const snap = await get(ref(db, `users/${me.uid}/joined`));
+            container.innerHTML = "";
+            if(!snap.exists()) {
+                container.innerHTML = "<p style='text-align:center; margin-top:50px; opacity:0.5;'>Koi group nahi mila.<br>Naya banayein ya Join karein!</p>";
+                return;
+            }
+            snap.forEach(g => {
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.innerHTML = `<b>${g.val()}</b><br><small style='opacity:0.5'>ID: ${g.key}</small>`;
+                div.onclick = () => startChat(g.key, g.val());
+                container.appendChild(div);
+            });
+        }
+
+        // --- CHAT LOGIC ---
+        function startChat(gid, name) {
+            activeGid = gid;
+            document.getElementById('group-title').innerText = name;
+            document.getElementById('group-id-display').innerText = "ID: " + gid;
+            document.getElementById('msg-box').innerHTML = "";
+            switchScr('chat-scr');
+
+            const chatRef = ref(db, `chats/${gid}`);
+            onChildAdded(chatRef, (s) => {
+                if(activeGid !== gid) return;
+                const d = s.val();
+                const div = document.createElement('div');
+                div.className = `msg ${d.uid === me.uid ? 'me' : 'other'}`;
+                div.innerHTML = `<span class="u-name">${d.name}</span>${d.text}`;
+                document.getElementById('msg-box').appendChild(div);
+                document.getElementById('msg-box').scrollTop = document.getElementById('msg-box').scrollHeight;
+                
+                // Simple Notification if Tab is hidden
+                if(document.hidden && d.uid !== me.uid) {
+                    new Notification(name, { body: `${d.name}: ${d.text}` });
+                }
+            });
+        }
+
+        const sendMessage = () => {
+            const t = document.getElementById('msg-inp').value.trim();
+            if(!t || !activeGid) return;
+            push(ref(db, `chats/${activeGid}`), { name: me.displayName, uid: me.uid, text: t, time: Date.now() });
+            document.getElementById('msg-inp').value = "";
+        };
+
+        document.getElementById('send-btn').onclick = sendMessage;
+        document.getElementById('msg-inp').onkeypress = (e) => { if(e.key === 'Enter') sendMessage(); };
+
+        window.leaveGroup = async () => {
+            if(confirm("Kya aap is group ko apni list se hatana chahte hain?")) {
+                await set(ref(db, `users/${me.uid}/joined/${activeGid}`), null);
+                goBack();
+            }
+        };
+    </script>
+</body>
+</html>
