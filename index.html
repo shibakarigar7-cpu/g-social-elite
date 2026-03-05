@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>G-Social Ultimate</title>
+    <style>
+        * { box-sizing: border-box; touch-action: manipulation; }
+        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; height: 100dvh; width: 100vw; display: flex; flex-direction: column; background: #020617; color: white; overflow: hidden; position: fixed; }
+        
+        /* 🛡️ Login Overlay */
+        #login-screen { position: fixed; inset: 0; background: #020617; z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+        .login-box { background: #0f172a; padding: 30px; border-radius: 20px; border: 1px solid #00d2ff; width: 100%; max-width: 350px; box-shadow: 0 0 20px rgba(0,210,255,0.2); }
+        .login-box h2 { margin-bottom: 20px; color: #00d2ff; letter-spacing: 2px; }
+        .login-box input { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; border: 1px solid #334155; background: #1e293b; color: white; outline: none; }
+        .login-box button { width: 100%; padding: 12px; margin-top: 15px; border-radius: 10px; border: none; background: #00d2ff; color: #020617; font-weight: bold; cursor: pointer; }
+
+        /* 🏗️ Main App Layout */
+        header { background: #0f172a; padding: 15px; text-align: center; border-bottom: 2px solid #00d2ff; }
+        #chat-wall { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 12px; background: radial-gradient(circle, #0f172a 0%, #020617 100%); }
+
+        /* 💎 Messaging Bubbles */
+        .msg-container { display: flex; flex-direction: column; width: 100%; }
+        .msg { padding: 12px; border-radius: 18px; max-width: 80%; position: relative; font-size: 0.9rem; border: 1px solid rgba(255,255,255,0.1); }
+        .msg.me { align-self: flex-end; background: #005c4b; border-bottom-right-radius: 2px; }
+        .msg.other { align-self: flex-start; background: #202c33; border-bottom-left-radius: 2px; }
+        .user-tag { font-weight: bold; font-size: 0.7rem; color: #00d2ff; margin-bottom: 5px; display: block; }
+        
+        /* Media Elements */
+        .msg img, .msg video { width: 100%; border-radius: 10px; margin-top: 5px; max-height: 250px; object-fit: cover; }
+        .msg audio { width: 100%; height: 40px; margin-top: 5px; filter: invert(1); }
+        .msg-info { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 5px; font-size: 0.6rem; opacity: 0.6; }
+        .del-btn { color: #ff4d4d; cursor: pointer; font-weight: bold; }
+
+        /* ⌨️ Footer */
+        .footer { background: #0f172a; padding: 12px; border-top: 1px solid #00d2ff; }
+        .input-row { display: flex; gap: 8px; align-items: center; }
+        #msgInp { flex: 1; background: #1e293b; border: none; color: white; padding: 12px; border-radius: 25px; outline: none; }
+        .icon-btn { color: #00d2ff; font-size: 1.3rem; cursor: pointer; }
+        #sendBtn { background: #00d2ff; color: #020617; border: none; width: 45px; height: 45px; border-radius: 50%; cursor: pointer; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; }
+        #recBtn.recording { color: #ff4d4d; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0.3; } }
+    </style>
+</head>
+<body>
+
+    <div id="login-screen">
+        <div class="login-box">
+            <h2>G-SOCIAL LOGIN</h2>
+            <input type="text" id="loginName" placeholder="Your Name">
+            <input type="text" id="loginRoom" placeholder="Secret Room ID">
+            <input type="password" id="loginPass" placeholder="Room Password">
+            <button id="loginBtn">ENTER ROOM</button>
+        </div>
+    </div>
+
+    <header><h3 id="roomTitle">🚀 ROOM: WAITING...</h3></header>
+    <div id="chat-wall"></div>
+    <div class="footer">
+        <div class="input-row">
+            <label class="icon-btn" for="mediaInp">📎</label>
+            <input type="file" id="mediaInp" accept="image/*,video/*" style="display: none;">
+            <input type="text" id="msgInp" placeholder="Message...">
+            <div class="icon-btn" id="recBtn">🎙️</div>
+            <button id="sendBtn">➤</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, push, onChildAdded, remove, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        const firebaseConfig = { apiKey: "AIzaSyB5fR75bSzUC431tGZb6NCm2frB7d-u290", databaseURL: "https://g-social-7319d-default-rtdb.firebaseio.com" };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        
+        let chatRef, currentUser, currentRoom;
+
+        // --- 🔐 Login Logic ---
+        document.getElementById('loginBtn').onclick = () => {
+            const name = document.getElementById('loginName').value;
+            const room = document.getElementById('loginRoom').value;
+            const pass = document.getElementById('loginPass').value;
+
+            if(!name || !room || !pass) { alert("Pura details bharo bhai!"); return; }
+
+            currentUser = name;
+            currentRoom = room + "_" + pass; // Password ko ID ke saath jod diya 🛡️
+            chatRef = ref(db, "rooms/" + currentRoom);
+            
+            document.getElementById('roomTitle').innerText = "🚀 ROOM: " + room;
+            document.getElementById('login-screen').style.display = "none";
+            startListening();
+        };
+
+        // --- 🎙️ Voice Logic ---
+        let mediaRecorder; let chunks = [];
+        const recBtn = document.getElementById('recBtn');
+        recBtn.onclick = async () => {
+            if (!mediaRecorder || mediaRecorder.state === "inactive") {
+                const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(s);
+                chunks = [];
+                mediaRecorder.ondataavailable = e => chunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    const r = new FileReader();
+                    r.readAsDataURL(new Blob(chunks, { type: 'audio/mp3' }));
+                    r.onloadend = () => push(chatRef, { user: currentUser, audio: r.result, time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) });
+                };
+                mediaRecorder.start(); recBtn.classList.add('recording');
+            } else { mediaRecorder.stop(); recBtn.classList.remove('recording'); }
+        };
+
+        // --- ✉️ Send Media & Text ---
+        document.getElementById('sendBtn').onclick = () => {
+            const m = document.getElementById('msgInp').value;
+            const f = document.getElementById('mediaInp').files[0];
+            const time = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+            if (f) {
+                const r = new FileReader(); r.readAsDataURL(f);
+                r.onload = () => {
+                    const type = f.type.startsWith('video') ? 'video' : 'image';
+                    push(chatRef, { user: currentUser, body: m, [type]: r.result, time: time });
+                };
+            } else if (m) {
+                push(chatRef, { user: currentUser, body: m, time: time });
+            }
+            document.getElementById('msgInp').value = ""; document.getElementById('mediaInp').value = "";
+        };
+
+        // --- 👁️ Sync Chat ---
+        function startListening() {
+            onChildAdded(chatRef, (snap) => {
+                const d = snap.val(), key = snap.key;
+                const isMe = d.user === currentUser;
+                const div = document.createElement('div');
+                div.className = "msg-container"; div.id = `cont-${key}`;
+                div.innerHTML = `
+                    <div class="msg ${isMe ? 'me' : 'other'}">
+                        <span class="user-tag">${d.user}</span>
+                        ${d.body ? `<div>${d.body}</div>` : ''}
+                        ${d.image ? `<img src="${d.image}">` : ''}
+                        ${d.video ? `<video controls src="${d.video}"></video>` : ''}
+                        ${d.audio ? `<audio controls src="${d.audio}"></audio>` : ''}
+                        <div class="msg-info">${d.time} <span class="del-btn" onclick="deleteMsg('${key}')">×</span></div>
+                    </div>`;
+                document.getElementById('chat-wall').appendChild(div);
+                document.getElementById('chat-wall').scrollTop = document.getElementById('chat-wall').scrollHeight;
+            });
+
+            window.deleteMsg = (id) => { if(confirm("Delete for everyone?")) remove(ref(db, "rooms/" + currentRoom + "/" + id)); };
+            onChildRemoved(chatRef, (snap) => { const el = document.getElementById(`cont-${snap.key}`); if(el) el.remove(); });
+        }
+    </script>
+</body>
+</html>
